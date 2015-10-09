@@ -3,7 +3,8 @@
 
 Giphy in your terminal.
 
-```
+```bash
+go get -u github.com/ivolo/giffy
 giffy Simpsons Ralph
 ```
 

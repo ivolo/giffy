@@ -35,60 +35,24 @@ func main() {
       return
     }
 
-    for i := 3; i < 6; i += 1 {
-      g := gifs[i]
+    for _, g := range(gifs) {
       gif, err := download(g.Images["original"].URL)
       check(err)
 
       ttyWidth, ttyHeight, err := terminal.GetSize(1)
       check(err)
 
-      // https://github.com/dpup/go-scratch/blob/master/gif-resize/gif-resize.go#L3
-      // This demonstrates a solution to resizing animated gifs.
-      //
-      // Frames in an animated gif aren't necessarily the same size, subsequent
-      // frames are overlayed on previous frames. Therefore, resizing the frames
-      // individually may cause problems due to aliasing of transparent pixels. This
-      // example tries to avoid this by building frames from all previous frames and
-      // resizing the frames as RGB.
-
-      // Create a new RGBA image to hold the incremental frames.
-      firstFrame := gif.Image[0].Bounds()
-      b := image.Rect(0, 0, firstFrame.Dx(), firstFrame.Dy())
-      img := image.NewRGBA(b)
-
-      // Resize each frame.
-      for index, frame := range gif.Image {
-        bounds := frame.Bounds()
-        draw.Draw(img, bounds, frame, bounds.Min, draw.Over)
-        resized := resize.Resize(uint(ttyWidth), uint(ttyHeight), img, resize.NearestNeighbor)
-        b2 := resized.Bounds()
-        pm := image.NewPaletted(b2, palette.Plan9)
-        draw.FloydSteinberg.Draw(pm, b2, resized, image.ZP)
-        gif.Image[index] = resized
-      }
+      // fix inconsistent frame sizing
+      fix(gif, uint(ttyWidth), uint(ttyHeight))
 
       for _, img := range(gif.Image) {
-        //size := img.Bounds().Max;
-        //log.Printf("Parsed png image [x: %d y: %d]", size.X, size.Y)
-
-      
-        //log.Printf("Terminal size [x: %d y: %d]", ttyWidth, ttyHeight)
-
-        //resized := resize.Resize(uint(ttyWidth), uint(ttyHeight), img, resize.NearestNeighbor)
-
-        str := ascii.Convert(img)
-
+        resized := resize.Resize(uint(ttyWidth), uint(ttyHeight), img, resize.NearestNeighbor)
+        str := ascii.Convert(resized)
         fmt.Print(str)
-        fmt.Println(g.Images["original"].URL)
-        x := 0
-        y := 0
-        r, g, b, a := img.At(x, y).RGBA()
-        r2, g2, b2, a2 := uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)
-        fmt.Println(img.At(x,y))
-        fmt.Println(gif.Config.ColorModel.Convert(img.At(x,y)))
-        fmt.Println(r, g, b, a)
-        fmt.Println(r2, g2, b2, a2)
+        
+        // fmt.Printf("\x1b[%dA", ttyHeight) // move cursor up
+        // fmt.Printf("\x1b[%dD", ttyWidth) // move cursor left
+        // fmt.Printf("\x1b[%dF", ttyHeight) // move cursor to the beginning of the line
       }
     }
 }
@@ -104,4 +68,52 @@ func download(url string) (*gif.GIF, error) {
     return nil, errors.New(fmt.Sprintf("error response '%d'", res.StatusCode))
   }
   return gif.DecodeAll(res.Body)
+}
+
+func fix(gif *gif.GIF, width uint, height uint) {
+  // credti: https://github.com/dpup/go-scratch/blob/master/gif-resize/gif-resize.go#L3
+  // This demonstrates a solution to resizing animated gifs.
+  //
+  // Frames in an animated gif aren't necessarily the same size, subsequent
+  // frames are overlayed on previous frames. Therefore, resizing the frames
+  // individually may cause problems due to aliasing of transparent pixels. This
+  // example tries to avoid this by building frames from all previous frames and
+  // resizing the frames as RGB.
+
+  // Create a new RGBA image to hold the incremental frames.
+  if !framesEqualSizes(gif) {
+    dealias(gif, width, height)
+    fmt.Println("dealasing!")
+  }
+}
+
+func framesEqualSizes(gif *gif.GIF) bool {
+  firstFrame := gif.Image[0].Bounds()
+  equalSizes := true
+  for _, frame := range gif.Image {
+    bounds := frame.Bounds()
+    if bounds.Max != firstFrame.Max {
+      equalSizes = false
+    }
+  }
+  return equalSizes
+}
+
+
+func dealias(gif *gif.GIF, width uint, height uint) {
+  // TODO: add better dealiasing algorithm: http://stackoverflow.com/questions/9988517/resize-gif-animation-pil-imagemagick-python
+  // Create a new RGBA image to hold the incremental frames.
+  firstFrame := gif.Image[0].Bounds()
+  b := image.Rect(0, 0, firstFrame.Dx(), firstFrame.Dy())
+  img := image.NewRGBA(b)
+
+  for index, frame := range gif.Image {
+    bounds := frame.Bounds()
+    draw.Draw(img, bounds, frame, bounds.Min, draw.Over)
+    resized := resize.Resize(width, height, img, resize.NearestNeighbor)
+    b2 := resized.Bounds()
+    pm := image.NewPaletted(b2, palette.Plan9)
+    draw.FloydSteinberg.Draw(pm, b2, resized, image.ZP)
+    gif.Image[index] = pm
+  }
 }

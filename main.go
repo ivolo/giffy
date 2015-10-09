@@ -35,7 +35,7 @@ func main() {
       return
     }
 
-    for _, g := range(gifs) {
+    for _, g := range(gifs[4:8]) {
       gif, err := download(g.Images["original"].URL)
       check(err)
 

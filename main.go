@@ -3,7 +3,8 @@ package main
 
 import (
   "fmt"
-  //"log"
+  "strings"
+  "os"
   "image"
   "image/gif"
   "image/draw"
@@ -23,7 +24,11 @@ func check(err error) {
 }
 
 func main() {
-    query := "simpsons ralph"
+    query := strings.Join(os.Args[1:], " ")
+    if len(query) == 0 {
+      fmt.Println("usage: giffy <query>")
+      os.Exit(1)
+    }
 
     c := giphy.New("dc6zaTOxFJmzC")
     gifs, err := c.Search(query)
@@ -35,15 +40,15 @@ func main() {
       return
     }
 
-    for _, g := range(gifs[4:8]) {
+    for _, g := range(gifs) {
       gif, err := download(g.Images["original"].URL)
       check(err)
 
       ttyWidth, ttyHeight, err := terminal.GetSize(1)
       check(err)
 
-      // fix inconsistent frame sizing
-      fix(gif, uint(ttyWidth), uint(ttyHeight))
+      // fix inconsistent frame sizing with dealising
+      dealias(gif, uint(ttyWidth), uint(ttyHeight))
 
       for _, img := range(gif.Image) {
         resized := resize.Resize(uint(ttyWidth), uint(ttyHeight), img, resize.NearestNeighbor)
@@ -70,8 +75,10 @@ func download(url string) (*gif.GIF, error) {
   return gif.DecodeAll(res.Body)
 }
 
-func fix(gif *gif.GIF, width uint, height uint) {
-  // credti: https://github.com/dpup/go-scratch/blob/master/gif-resize/gif-resize.go#L3
+func dealias(gif *gif.GIF, width uint, height uint) {
+  // TODO: add better dealiasing algorithm: http://stackoverflow.com/questions/9988517/resize-gif-animation-pil-imagemagick-python
+  
+  // credit: https://github.com/dpup/go-scratch/blob/master/gif-resize/gif-resize.go#L3
   // This demonstrates a solution to resizing animated gifs.
   //
   // Frames in an animated gif aren't necessarily the same size, subsequent
@@ -80,28 +87,6 @@ func fix(gif *gif.GIF, width uint, height uint) {
   // example tries to avoid this by building frames from all previous frames and
   // resizing the frames as RGB.
 
-  // Create a new RGBA image to hold the incremental frames.
-  if !framesEqualSizes(gif) {
-    dealias(gif, width, height)
-    fmt.Println("dealasing!")
-  }
-}
-
-func framesEqualSizes(gif *gif.GIF) bool {
-  firstFrame := gif.Image[0].Bounds()
-  equalSizes := true
-  for _, frame := range gif.Image {
-    bounds := frame.Bounds()
-    if bounds.Max != firstFrame.Max {
-      equalSizes = false
-    }
-  }
-  return equalSizes
-}
-
-
-func dealias(gif *gif.GIF, width uint, height uint) {
-  // TODO: add better dealiasing algorithm: http://stackoverflow.com/questions/9988517/resize-gif-animation-pil-imagemagick-python
   // Create a new RGBA image to hold the incremental frames.
   firstFrame := gif.Image[0].Bounds()
   b := image.Rect(0, 0, firstFrame.Dx(), firstFrame.Dy())
